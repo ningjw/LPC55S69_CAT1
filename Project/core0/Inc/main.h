@@ -3,7 +3,7 @@
 
 
 #include "stdio.h"
-//#include "EventRecorder.h"
+#include "EventRecorder.h"
 #include "pin_mux.h"
 #include "peripherals.h"
 #include "clock_config.h"
@@ -74,6 +74,7 @@
 //#define DEBUG_PRINTF(...)
 
 #define SOFT_VERSION       "V2103272100"
+//#define SOFT_VERSION       "OTA-VERSION"
 #define HARD_VERSION       "1.0.0"
 #define PRODUCT_ID         "388752"
 #define DEVICE_ID          "655093740"
@@ -95,10 +96,7 @@
 #define SYS_PARA_ADDR       0x00088000     // 参数保存
 #define SAMPLE_PARA_ADDR    (SYS_PARA_ADDR + PAGE_SIZE)
 
-//有5个sector用于管理ADC采样数据, 每个采样数据占用20byte, 共可以保存20480/20=1024个
-#define ADC_MAX_NUM    1023
-#define ADC_INFO_ADDR  0
-#define ADC_DATA_ADDR  20480
+
 
 #if 0
 #ifdef BLE_VERSION
@@ -112,9 +110,6 @@
 #endif
 #endif
 
-#define ADC_NUM_BLE_NFC           58  //一个数据包中包含了多少个ADC数据点
-#define FIRM_TOTAL_LEN_BLE_NFC    166 //一个升级包的总长度
-#define FIRM_DATA_LEN_BLE_NFC    (FIRM_TOTAL_LEN_BLE_NFC - 6)//一个升级包中有效数据长度
 
 #define ADC_NUM_WIFI_CAT1         335//一个数据包中包含了多少个ADC数据点
 #define FIRM_TOTAL_LEN_WIFI_CAT1  1006//一个升级包的总长度
@@ -151,19 +146,6 @@
 #define WIFI_NRELOAD_LOW         GPIO_PinWrite(GPIO, BOARD_WIFI_nReload_PORT, BOARD_WIFI_nReload_PIN, 0)
 #define WIFI_NRELOAD_HIGH        GPIO_PinWrite(GPIO, BOARD_WIFI_nReload_PORT, BOARD_WIFI_nReload_PIN, 1)
 
-typedef struct{
-	uint32_t totalAdcInfo;
-	uint32_t addrOfNewInfo;
-	uint32_t addrOfNewData;
-	uint32_t freeOfKb;
-	uint32_t bakup;//让
-}AdcInfoTotal;
-
-typedef struct{
-	uint32_t AdcDataAddr;//ADC数据地址
-	uint32_t AdcDataLen; //ADC数据长度
-	char  AdcDataTime[12];//ADC数据采集时间
-}AdcInfo;
 
 //该结构体定义了需要保存到EEPROM中的参数
 typedef struct{
@@ -196,6 +178,8 @@ typedef struct{
     uint32_t sampPacksByWifiCat1;//总共采集道的数据,需要分多少个包上传
     uint32_t spdStartSid;//转速信号从哪个sid开始.
     char     CSQ[8];
+	char     LBS[24];
+	char     LBSN[128];
 }SysPara;
 
 typedef enum{
@@ -272,11 +256,10 @@ typedef struct{
     char  DAUID[20];
 
     uint32_t shkCount;   //震动信号采集到的个数
-	uint32_t spdCount;   //转速信号采集到的个数.
 
     uint8_t  sampleReason;//采集方式
     uint32_t sampleInterval;//cat1版本采样周期,单位分钟
-    uint32_t sampNumber;  //取样时间
+    uint32_t sampNumber;  //取样个数
     uint32_t Ltc1063Clk;  //取样时钟频率
 	float    shkRMS;      //震动信号的时域总值
 }SysSamplePara;//该结构体总长度不能轻易变动

@@ -100,7 +100,6 @@ void ADC_SampleStart(uint8_t reason)
 	g_sample_para.sampleReason = reason;
 	g_sys_para.tempCount = 0;
     g_sample_para.shkCount = 0;
-	g_sample_para.spdCount = 0;
 	memset(ShakeADC,0,ADC_LEN);
 	memset(Temperature, 0, sizeof(Temperature));
 	
@@ -197,21 +196,15 @@ void ADC_SampleStop(void)
     GPIO_PinWrite(GPIO, BOARD_LED_SYS_RED_PORT,  BOARD_LED_SYS_RED_PIN, OFF);
     GPIO_PinWrite(GPIO, BOARD_LED_SYS_GREEN_PORT, BOARD_LED_SYS_GREEN_PIN, ON);
     
+	TMP101_Init();//温度传感器进入掉电模式
+	
 	//关闭时钟输出
-#ifndef CAT1_VERSION
-	SI5351a_SetPDN(SI_CLK0_CONTROL,false);
-	SI5351a_SetPDN(SI_CLK1_CONTROL,false);
-#else
 	ADC_PwmClkStop();
-#endif
+
 	//关闭电源
 	PWR_3V3A_OFF;
 	PWR_5V_OFF;//开启5V的滤波器电源
-#ifdef CAT1_VERSION
-    g_sample_para.spdCount = 0;//无线产品不采集转速信号
-#else
-    g_sample_para.spdCount = spd_msg->len;
-#endif
+
     /* 统计平均温度,最小温度,最大温度 */
     float sum = 0;
     int min_i = 0;
@@ -224,35 +217,14 @@ void ADC_SampleStop(void)
     g_sample_para.Process = sum / g_sys_para.tempCount;
     g_sample_para.ProcessMax = Temperature[max_i];
     g_sample_para.ProcessMin = Temperature[min_i];
-
-#if defined(BLE_VERSION)
-    //计算通过蓝牙(NFC)发送震动信号需要多少个包
-    g_sys_para.shkPacksByBleNfc = (g_sample_para.shkCount / ADC_NUM_BLE_NFC) +  (g_sample_para.shkCount % ADC_NUM_BLE_NFC ? 1 : 0);
-    
-    //计算通过蓝牙(NFC)发送转速信号需要多少个包
-    g_sys_para.spdPacksByBleNfc = (g_sample_para.spdCount / ADC_NUM_BLE_NFC) +  (g_sample_para.spdCount % ADC_NUM_BLE_NFC ? 1 : 0);
-    
-    //计算将所有数据通过通过蓝牙(NFC)发送需要多少个包
-    g_sys_para.sampPacksByBleNfc = g_sys_para.shkPacksByBleNfc + g_sys_para.spdPacksByBleNfc + 3;//wifi需要加上3个采样参数包
-    
-    //转速信号从哪个sid开始发送
-    g_sys_para.spdStartSid = g_sys_para.shkPacksByBleNfc + 3;//需要加上3个采样参数包
-#elif defined(WIFI_VERSION) || defined(CAT1_VERSION)
     
     LPC55S69_BatAdcUpdate();
     
     //计算通过WIFI发送震动信号需要多少个包
     g_sys_para.shkPacksByWifiCat1 = (g_sample_para.shkCount / ADC_NUM_WIFI_CAT1) +  (g_sample_para.shkCount % ADC_NUM_WIFI_CAT1 ? 1 : 0);
     
-    //计算通过WIFI发送转速信号需要多少个包
-    g_sys_para.spdPacksByWifiCat1 = 0;
-    
     //计算将所有数据通过WIFI上传需要多少个包
     g_sys_para.sampPacksByWifiCat1 = g_sys_para.shkPacksByWifiCat1 + 1;//wifi需要加上1个采样参数包
-    
-    //转速信号从哪个sid开始发送
-//    g_sys_para.spdStartSid = g_sys_para.shkPacksByBleNfc + 1;//需要加上1个采样参数包
-#endif
 }
 
 
@@ -298,8 +270,9 @@ void ADC_AppTask(void)
 	
 	TMP101_Init();
 	
-    xTaskNotify(ADC_TaskHandle, EVT_SAMPLE_START, eSetBits);
-    
+//    xTaskNotify(ADC_TaskHandle, EVT_SAMPLE_START, eSetBits);
+    vTaskDelay(5000);
+	SystemSleep();
     while(1)
     {
         /*等待ADC完成采样事件*/

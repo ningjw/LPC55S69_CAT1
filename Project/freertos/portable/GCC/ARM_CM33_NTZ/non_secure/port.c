@@ -510,14 +510,10 @@ void SysTick_Handler( void ) /* PRIVILEGED_FUNCTION */
 {
 	uint32_t ulPreviousMask;
 	
-#if defined(WIFI_VERSION) || defined(BLE_VERSION)
-	extern void FLEXCOMM3_TimeTick(void);
-	FLEXCOMM3_TimeTick();
-#endif
-#ifdef CAT1_VERSION
+	extern void FLEXCOMM5_TimeTick(void);
 	extern void FLEXCOMM2_TimeTick(void);
 	FLEXCOMM2_TimeTick();
-#endif
+	FLEXCOMM5_TimeTick();
 	
 	ulPreviousMask = portSET_INTERRUPT_MASK_FROM_ISR();
 	{

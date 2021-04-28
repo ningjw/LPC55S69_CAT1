@@ -340,9 +340,9 @@ instance:
 - peripheral: 'FLEXCOMM5'
 - config_sets:
   - interruptsCfg:
-    - interrupts: ''
+    - interrupts: 'kUSART_RxErrorInterruptEnable kUSART_RxLevelInterruptEnable'
     - interrupt_vectors:
-      - enable_rx_tx_irq: 'false'
+      - enable_rx_tx_irq: 'true'
       - interrupt_rx_tx:
         - IRQn: 'FLEXCOMM5_IRQn'
         - enable_interrrupt: 'enabled'
@@ -386,7 +386,9 @@ static void FLEXCOMM5_init(void) {
   /* Reset FLEXCOMM device */
   RESET_PeripheralReset(kFC5_RST_SHIFT_RSTn);
   USART_Init(FLEXCOMM5_PERIPHERAL, &FLEXCOMM5_config, FLEXCOMM5_CLOCK_SOURCE);
-  USART_EnableInterrupts(FLEXCOMM5_PERIPHERAL, 0);
+  USART_EnableInterrupts(FLEXCOMM5_PERIPHERAL, kUSART_RxErrorInterruptEnable | kUSART_RxLevelInterruptEnable);
+  /* Enable interrupt FLEXCOMM5_IRQn request in the NVIC. */
+  EnableIRQ(FLEXCOMM5_FLEXCOMM_IRQN);
 }
 
 /***********************************************************************************************************************
@@ -512,6 +514,7 @@ instance:
       - 0: []
       - 1: []
       - 2: []
+      - 3: []
     - interrupts: []
  * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS **********/
 /* clang-format on */

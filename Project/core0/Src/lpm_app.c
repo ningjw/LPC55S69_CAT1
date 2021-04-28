@@ -54,6 +54,12 @@ static void BOARD_InitPinsOnSleep(void)
         .pinDirection = kGPIO_DigitalOutput,
         .outputLogic = 0U
     };
+	
+	gpio_pin_config_t pin_config_input = {
+        .pinDirection = kGPIO_DigitalInput,
+        .outputLogic = 0U
+    };
+	
 	for(uint8_t port = 0; port<2; port++)
 	{
 		for(uint8_t pin = 0; pin<32; pin++)
@@ -63,9 +69,10 @@ static void BOARD_InitPinsOnSleep(void)
 				continue;
 			}
 			
-			if((port == 1) && (pin == 15 || pin==16 || pin==17 || pin==21 || pin==22)){
+			if((port == 1) && (pin == 15 || pin==16 || pin==17 || pin==21 || pin == 22)){
 				continue;
 			}
+			
 			/* Initialize GPIO functionality on pin i  */
 			GPIO_PinInit(GPIO, port, pin, &pin_config_low);
 			IOCON->PIO[port][pin] = ((IOCON->PIO[port][pin] &
@@ -77,6 +84,10 @@ static void BOARD_InitPinsOnSleep(void)
 			__nop();
 		}
 	}
+	
+	//NFC-RST  PIO1-25已经配置输出为0
+	//NFC_HREQ PIO1-22
+	//NFC_IRQ  PIO1_30
 }
 
 
@@ -105,15 +116,16 @@ void SystemSleep(void)
 	            alarmDate.year,alarmDate.month,alarmDate.day,
 	            alarmDate.hour,alarmDate.minute,alarmDate.second);
 	
+	TMP101_Init();
 	BOARD_InitPinsOnSleep();
 	BOARD_BootClockFRO12M();//深度睡眠模式下,系统时钟需要切换为内部的12M时钟, 否则无法唤醒
 #ifdef CAT1_VERSION
-	//配置模块通过RTC唤醒
+	//配置模块通过RTC唤醒   POWER_EnterDeepSleep POWER_EnterPowerDown POWER_EnterDeepPowerDown
 	POWER_EnterDeepSleep(kPDRUNCFG_PD_FRO32K , 0, WAKEUP_RTC_LITE_ALARM_WAKEUP, 0x1U);
 #else
 	POWER_EnterDeepSleep(EXCLUDE_PD, 0x7FFF, WAKEUP_FLEXCOMM3, 1);
 #endif
-//    NVIC_SystemReset();
+    NVIC_SystemReset();
 	BOARD_BootClockFROHF96M();
 	BOARD_InitPins();
 	DEBUG_PRINTF("exit deep sleep\n");

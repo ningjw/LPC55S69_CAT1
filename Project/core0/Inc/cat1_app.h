@@ -12,11 +12,13 @@
 #define DATA_SERVER_IP        "183.230.40.40"
 #define DATA_SERVER_PORT      1811
 #else
-#define DATA_SERVER_IP        "120.197.216.227"
-#define DATA_SERVER_PORT      7003
+//#define DATA_SERVER_IP        "120.197.216.227"
+//#define DATA_SERVER_PORT      7003
+//#define DATA_SERVER_IP        "183.230.40.40"
+//#define DATA_SERVER_PORT      1811
+#define DATA_SERVER_IP        "1jv8238127.51mypc.cn"
+#define DATA_SERVER_PORT      21568
 #endif
-//#define DATA_SERVER_IP        1jv8238127.51mypc.cn
-//#define DATA_SERVER_PORT      37032
 
 #define REGISTER_SERVER_IP    "183.230.40.33"
 #define REGISTER_SERVER_PORT  80

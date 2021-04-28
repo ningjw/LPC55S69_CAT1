@@ -51,13 +51,11 @@ bool CAT1_SendCmd(const char *cmd, const char *recv_str, uint16_t time_out)
         return false;
     }
 nb_retry:
-    g_Cat1RxCnt = 0;
-	memset(g_Cat1RxBuffer, 0, sizeof(g_Cat1RxBuffer));
     FLEXCOMM2_SendStr(cmd);//发送AT指令
     
     /*wait resp_time*/
     xTaskNotifyWait(pdFALSE, ULONG_MAX, &cat1_event, time_out);
-
+	
     //接收到的数据中包含响应的数据
     if(strstr((char *)g_Cat1RxBuffer, recv_str) != NULL) {
         return true;
@@ -83,6 +81,36 @@ char* substr(char *src, char* head)
     return src+len;
 }
 
+
+bool CAT1_GetLBS(void)
+{
+	CAT1_SendCmd(CAT1_PWD"AT+CSQ\r\n" ,"OK", 300);
+    char *s = strstr((char *)g_Cat1RxBuffer,"+CSQ: ");
+    if(s){
+        strtok(s, ",");
+        memset(g_sys_para.CSQ, 0, sizeof(g_sys_para.CSQ));
+        strcpy(g_sys_para.CSQ, s+6);
+    }
+	
+	CAT1_SendCmd(CAT1_PWD"AT+LBS\r\n" ,"OK", 300);
+	s = strstr((char *)g_Cat1RxBuffer,"+LBS: ");
+	memset(g_sys_para.LBS, 0, sizeof(g_sys_para.LBS));
+	if(s){
+		strtok(s,"\r\n");
+		strncpy(g_sys_para.LBS, s+6, sizeof(g_sys_para.LBS));
+	}
+#if 0
+	CAT1_SendCmd(CAT1_PWD"AT+LBSN\r\n" ,"OK", 300);
+	s = strstr((char *)g_Cat1RxBuffer,"+LBSN:");
+	memset(g_sys_para.LBSN, 0, sizeof(g_sys_para.LBSN));
+	if(s){
+		strtok(s,"OK");
+		strncpy(g_sys_para.LBSN, s+9, sizeof(g_sys_para.LBSN));
+	}
+#endif
+	return true;
+}
+
 bool CAT1_LoginOneNet(void)
 {
     //登录OneNet系统
@@ -92,14 +120,7 @@ bool CAT1_LoginOneNet(void)
     return true;
 }
 
-bool CAT1_LoginTcpServer(void)
-{
-    memset(g_commTxBuf, 0, sizeof(g_commTxBuf));
-    sprintf((char *)g_commTxBuf, "{\"Id\":22,\"SN\":\"%s\"}", g_sys_flash_para.SN);
-    return CAT1_SendCmd((char *)g_commTxBuf, "OK", 3000);
-}
-
-bool CAT1_SyncInfo(void)
+bool CAT1_SyncSystemInfo(void)
 {
     //与服务器同步状态
     memset(g_commTxBuf, 0, FLEXCOMM_BUFF_LEN);
@@ -109,7 +130,10 @@ bool CAT1_SyncInfo(void)
     strrpl((char*)g_commTxBuf,"\"","\\\"");
 	FLEXCOMM2_SendStr((char *)g_commTxBuf);
 #else
-    CAT1_SendCmd((char *)g_commTxBuf, "\"Id\":23", 3000);
+    if(CAT1_SendCmd((char *)g_commTxBuf, "\"Id\":23", 3000) == false){
+		return false;
+	}
+	DEBUG_PRINTF("\r\n%S\r\n", g_Cat1RxBuffer);
     cJSON *pJson = cJSON_Parse((char *)g_Cat1RxBuffer);
     if(NULL == pJson) {
         return false;
@@ -118,29 +142,38 @@ bool CAT1_SyncInfo(void)
     g_sys_para.haveNewVersion = false;
     cJSON * pSub = cJSON_GetObjectItem(pJson, "NSV");
     if(NULL != pSub){
-        g_sys_para.haveNewVersion = pSub->valueint;
+		if(pSub->valueint){
+			if(g_sys_para.haveNewVersion)
+			{
+				pSub = cJSON_GetObjectItem(pJson, "Packs");
+				if (NULL != pSub) {
+					g_sys_flash_para.firmPacksTotal  = pSub->valueint;
+				}
+				pSub = cJSON_GetObjectItem(pJson, "Size");
+				if (NULL != pSub) {
+					g_sys_flash_para.firmCore0Size = pSub->valueint;
+				}
+				pSub = cJSON_GetObjectItem(pJson, "CRC16");
+				if (NULL != pSub) {
+					g_sys_flash_para.firmCrc16 = pSub->valueint;
+				}
+				pSub = cJSON_GetObjectItem(pSub,"SV");
+				if(NULL != pSub){
+					//判断当前版本号与目标版本号
+					if(strcmp(pSub->valuestring, SOFT_VERSION) > 0){
+						g_sys_para.haveNewParam = true;//有新的版本
+						memset(g_sys_flash_para.firmUpdateTargetV, 0, sizeof(g_sys_flash_para.firmUpdateTargetV));
+						strcpy(g_sys_flash_para.firmUpdateTargetV,pSub->valuestring);
+					}
+				}
+			}
+		}
     }
-    
-    g_sys_para.haveNewParam = false;
+	
+	g_sys_para.haveNewParam = false;
     pSub = cJSON_GetObjectItem(pJson, "Para");
     if (NULL != pSub) {
         g_sys_para.haveNewParam = pSub->valueint;
-    }
-    
-    if(g_sys_para.haveNewParam)
-    {
-        pSub = cJSON_GetObjectItem(pJson, "Packs");
-        if (NULL != pSub) {
-            g_sys_flash_para.firmPacksTotal  = pSub->valueint;
-        }
-        pSub = cJSON_GetObjectItem(pJson, "Size");
-        if (NULL != pSub) {
-            g_sys_flash_para.firmCore0Size = pSub->valueint;
-        }
-        pSub = cJSON_GetObjectItem(pJson, "CRC16");
-        if (NULL != pSub) {
-            g_sys_flash_para.firmCrc16 = pSub->valueint;
-        }
     }
     
     /*解析消息内容, 获取日期和时间*/
@@ -177,6 +210,16 @@ bool CAT1_SyncInfo(void)
 }
     
 
+
+bool CAT1_SyncSampleParam(void)
+{
+	memset(g_commTxBuf, 0, FLEXCOMM_BUFF_LEN);
+	strcat((char *)g_commTxBuf,"{\"Id\":24}");
+	if(CAT1_SendCmd((char *)g_commTxBuf, "\"Id\":24", 3000) == false){
+		return false;
+	}
+	return ParseSamplePara(g_Cat1RxBuffer);
+}
 bool CAT1_CheckServerIp(char *serverIp, uint16_t port)
 {
     if(CAT1_SendCmd(CAT1_PWD"AT+SOCKA?\r\n", serverIp, 300) == false)
@@ -265,11 +308,89 @@ bool CAT1_PowerOn(void)
 	if(xTaskNotifyWait(pdFALSE, ULONG_MAX, &cat1_event, CAT1_WAIT_TICK) == false){
         return false;
     }
-    
+	
+	CAT1_SendCmd(CAT1_PWD"AT+HEARTEN=OFF\r\n", "OK", 1000);
+	
+	CAT1_SendCmd(CAT1_PWD"AT+HEART?\r\n", "OK", 1000);
+	
     CAT1_SendCmd(CAT1_PWD"AT+UARTFT=10\r\n", "OK", 1000);
     
+//	CAT1_SendCmd(CAT1_PWD"AT+S\r\n", "OK", 1000);
+	
     return true;
 }
+
+bool TcpServer_GetVersion(void)
+{
+	g_sys_flash_para.firmPacksCount = 0;
+    uint32_t app_data_addr = CORE0_DATA_ADDR;
+	BaseType_t xReturn = pdFALSE;
+	uint16_t crc = 0;
+	uint8_t retry = 0;
+	
+GET_NEXT:
+	g_Cat1RxCnt = 0;
+	memset(g_Cat1RxBuffer, 0, sizeof(g_Cat1RxBuffer));
+	memset(g_commTxBuf, 0, sizeof(g_commTxBuf));
+	
+	sprintf((char *)g_commTxBuf,"{\"Id\":25,\"Sid\":%d}", g_sys_flash_para.firmPacksCount);
+	FLEXCOMM2_SendStr((char *)g_commTxBuf);
+	xReturn = xTaskNotifyWait(pdFALSE, ULONG_MAX, &cat1_event, CAT1_WAIT_TICK);
+    if(xReturn == false){
+        if(retry++ > 3){
+			return false;
+		}
+		goto GET_NEXT;//再次获取
+    }
+	
+	//模块重启了,一般是电量低的情况导致
+	char *data_ptr = strstr((char *)g_Cat1RxBuffer, "WH-GM5");
+	if(data_ptr != NULL){
+		if(retry++ > 3){
+			return false;
+		}
+		goto GET_NEXT;//再次获取
+	}
+	
+	crc = CRC16(g_Cat1RxBuffer+4, FIRM_TOTAL_LEN_WIFI_CAT1);//自己计算出的CRC16
+	if(g_Cat1RxBuffer[FIRM_TOTAL_LEN_WIFI_CAT1-2] != (uint8_t)crc || g_Cat1RxBuffer[FIRM_TOTAL_LEN_WIFI_CAT1-1] != (crc>>8)) {
+        if(retry++ > 3){
+			return false;
+		}
+        if(CAT1_CheckConnected() == false){
+            return false;
+        }
+		goto GET_NEXT;//再次获取
+    }
+	else 
+	{
+        /* 包id */
+        g_sys_flash_para.firmPacksCount = g_Cat1RxBuffer[2] | (g_Cat1RxBuffer[3]<<8);
+
+        g_sys_flash_para.firmCurrentAddr = app_data_addr+g_sys_flash_para.firmPacksCount * FIRM_DATA_LEN_WIFI_CAT1;//
+        DEBUG_PRINTF("\nADDR = 0x%x\n",g_sys_flash_para.firmCurrentAddr);
+        LPC55S69_FlashSaveData(g_Cat1RxBuffer+4, g_sys_flash_para.firmCurrentAddr, FIRM_DATA_LEN_WIFI_CAT1);
+	}
+	
+	 /* 当前为最后一包,计算整个固件的crc16码 */
+    if(g_sys_flash_para.firmPacksCount == g_sys_flash_para.firmPacksTotal - 1) {
+		crc = CRC16((uint8_t *)app_data_addr, g_sys_flash_para.firmCore0Size);
+        DEBUG_PRINTF("\nCRC=%d",crc);
+        if(crc == g_sys_flash_para.firmCrc16) {
+            DEBUG_PRINTF("\nCRC Verify OK\n");
+            g_sys_flash_para.firmCore0Update = BOOT_NEW_VERSION;
+			Flash_SavePara();
+			NVIC_SystemReset();
+        }
+	}else{
+		retry = 0;
+		g_sys_flash_para.firmPacksCount++;
+		goto GET_NEXT;
+	}
+	
+	return true;
+}
+
 
 
 /* CAT1-IoT 从OneNet服务器上检测是否有新的固件可更新 */
@@ -622,21 +743,18 @@ bool CAT1_UploadSampleData(void)
     if(CAT1_CheckConnected() == false){
         return false;
     }
+	
+	CAT1_GetLBS();
     
 #ifdef USE_ONENET
     if(CAT1_LoginOneNet() == false){
         return false;
     }
-#else
-    if(CAT1_LoginTcpServer() == false){
-        return false;
-    }
 #endif
     
     //与服务器同步状态
-    CAT1_SyncInfo();
-    
-    
+    CAT1_SyncSystemInfo();
+	
     //发送采样数据包
 NEXT_SID:
     memset(g_commTxBuf, 0, FLEXCOMM_BUFF_LEN);
@@ -649,15 +767,15 @@ NEXT_SID:
         strrpl((char*)g_commTxBuf,"\"","'");
     }
 #endif
+	if(CAT1_CheckConnected() == false){
+		DEBUG_PRINTF("%d:CAT1_CheckConnected fail",__LINE__);
+		return false;
+	}
     USART_WriteBlocking(FLEXCOMM2_PERIPHERAL, g_commTxBuf, len);
     xReturn = xTaskNotifyWait(pdFALSE, ULONG_MAX, &cat1_event, CAT1_WAIT_TICK);//等待服务器回复数据,超时时间10S
     char *data_ptr = strstr((char *)g_Cat1RxBuffer, "WH-GM5");
     if(data_ptr != NULL){
         if(auto_restart_times++ > 3){
-            return false;
-        }
-        if(CAT1_CheckConnected() == false){
-			DEBUG_PRINTF("%d:CAT1_CheckConnected fail",__LINE__);
             return false;
         }
         goto NEXT_SID;
@@ -670,9 +788,9 @@ NEXT_SID:
     }
 	
 	//本次采样数据已经发送完成,需要检测flash中是否有数据需要上传
-	
-	
+
     //开机后,只检测一次是否升级
+#ifdef USE_ONENET
     if(checkVersion == true)
     {
         checkVersion = false;
@@ -683,13 +801,22 @@ NEXT_SID:
         }
 		CAT1_CheckServerIp(DATA_SERVER_IP, DATA_SERVER_PORT);
     }
-    
+#else
+	//是否有采样数据更新
+	if(g_sys_para.haveNewParam)
+	{
+		CAT1_SyncSampleParam();
+	}
+	if(g_sys_para.haveNewVersion)
+	{
+		TcpServer_GetVersion();
+	}
+#endif
     /* 关机*/
     PWR_CAT1_OFF;
     
     return true;
 }
-
 
 
 void CAT1_AppTask(void)
@@ -708,17 +835,14 @@ void CAT1_AppTask(void)
         xReturn = xTaskNotifyWait(pdFALSE, ULONG_MAX, &cat1_event, portMAX_DELAY);
 		if ( pdTRUE == xReturn && cat1_event == EVT_UPLOAD_SAMPLE)
 		{
-			if(cat1_event == EVT_UPLOAD_SAMPLE)//采样完成,将采样数据上传
-            {
-                if( CAT1_UploadSampleData()== false){
-					/*将采样数据保存到spi flash,等待下次传输*/
-					g_sys_para.sysLedStatus = SYS_UPLOAD_DATA_ERR;
-					W25Q128_AddAdcData();
-                    vTaskDelay(3000);//等待指示灯闪烁3S
-                }
-                //进入低功耗模式
-                xTaskNotify(ADC_TaskHandle, EVT_ENTER_SLEEP, eSetBits);
-            }
+			if( CAT1_UploadSampleData()== false){
+				/*将采样数据保存到spi flash,等待下次传输*/
+				g_sys_para.sysLedStatus = SYS_UPLOAD_DATA_ERR;
+				W25Q128_AddAdcData();
+				vTaskDelay(3000);//等待指示灯闪烁3S
+			}
+			//进入低功耗模式
+			xTaskNotify(ADC_TaskHandle, EVT_ENTER_SLEEP, eSetBits);
 		}
 		//清空接受到的数据
         memset(g_Cat1RxBuffer, 0, sizeof(g_Cat1RxBuffer));

@@ -148,6 +148,21 @@ void nfc_awake(void)
 	NFC_SendData(g_NfcTxBuffer, i);
 }
 
+void nfc_power_down(void)
+{
+	uint8_t i = 0;
+	g_NfcTxBuffer[i++] = 0x00;
+	g_NfcTxBuffer[i++] = 0x00;
+	g_NfcTxBuffer[i++] = 0xFF;
+	g_NfcTxBuffer[i++] = 0x03;
+	g_NfcTxBuffer[i++] = 0xFD;
+	g_NfcTxBuffer[i++] = 0xD4;
+	g_NfcTxBuffer[i++] = 0x16;
+	g_NfcTxBuffer[i++] = 0x08;
+	g_NfcTxBuffer[i++] = NFC_CalcChecksum(g_NfcTxBuffer+5,3);
+	g_NfcTxBuffer[i++] = 0x00;
+	NFC_SendData(g_NfcTxBuffer, i);
+}
 
 void nfc_TgGetData(void)
 {
@@ -222,6 +237,12 @@ void NFC_AppTask(void)
                 //error
             }
             break;
+		case 1:
+			nfc_power_down();
+			xTaskNotifyWait(pdFALSE, ULONG_MAX, &nfc_event, portMAX_DELAY);//等待NFC模块回复
+			nfc_step++;
+			break;
+#if 0
         case 1:
             nfc_TgInitAsTarget();//将NFC模块初始化为Target
             xTaskNotifyWait(pdFALSE, ULONG_MAX, &nfc_event, portMAX_DELAY);//等待NFC模块回复
@@ -255,6 +276,7 @@ void NFC_AppTask(void)
         case 3:
             if(g_NfcRxData)
             {
+
                 uint8_t* sendBuf = ParseProtocol(g_NfcRxData);
                 
                 /* 是否接受完成整个数据包 */
@@ -278,6 +300,7 @@ void NFC_AppTask(void)
                 }
             }
             break;
+#endif
         default:
             break;
         }
@@ -285,6 +308,7 @@ void NFC_AppTask(void)
 		//清空接受到的数据
         memset(g_NfcRxBuffer, 0, sizeof(g_NfcRxBuffer));
         g_NfcRxCnt = 0;
+		vTaskDelay(1);
 	}
 }
 

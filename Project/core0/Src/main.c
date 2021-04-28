@@ -1,5 +1,6 @@
 #include "main.h"
 #include "fsl_device_registers.h"
+#include "EventRecorder.h"
 
 SysPara        g_sys_para;
 SysFlashPara   g_sys_flash_para;
@@ -64,6 +65,11 @@ void main(void)
 	BOARD_BootClockRUN();
 	BOARD_InitPins();
 	BOARD_InitPeripherals();
+	
+	/* 初始化 EventRecorder 并开启 */
+	EventRecorderInitialize(EventRecordAll, 1U);
+	EventRecorderStart();
+	
 	memory_init();
 	SPI_Flash_Init();
 	InitSysPara();
@@ -79,64 +85,17 @@ void main(void)
 	/* 创建ADC_Task任务 参数依次为：入口函数、名字、栈大小、函数参数、优先级、控制块 */ 
     xTaskCreate((TaskFunction_t )ADC_AppTask, "ADC_Task",1024,NULL, 4,&ADC_TaskHandle);
 	
-#ifdef CAT1_VERSION
 	/* 创建CAT1_Task任务 参数依次为：入口函数、名字、栈大小、函数参数、优先级、控制块 */ 
     xTaskCreate((TaskFunction_t )CAT1_AppTask,"CAT1_Task",1536,NULL, 3,&CAT1_TaskHandle);
 
     /* 创建NFC_Task任务 参数依次为：入口函数、名字、栈大小、函数参数、优先级、控制块 */ 
 //    xTaskCreate((TaskFunction_t )NFC_AppTask,"NFC_Task",512,NULL, 3,&NFC_TaskHandle);
-#endif
- 
-#if defined(BLE_VERSION) || defined(WIFI_VERSION)
-	/* 创建Battery_Task任务 参数依次为：入口函数、名字、栈大小、函数参数、优先级、控制块 */ 
-    xTaskCreate((TaskFunction_t )BAT_AppTask,"BAT_Task",512,NULL, 2,&BAT_TaskHandle);
-	
-    /* 创建BLE_Task任务 参数依次为：入口函数、名字、栈大小、函数参数、优先级、控制块 */ 
-    xTaskCreate((TaskFunction_t )BLE_WIFI_AppTask,"BLE_WIFI_Task",1024,NULL, 3,&BLE_WIFI_TaskHandle);
-	
-	/* 创建ADC_Task任务 参数依次为：入口函数、名字、栈大小、函数参数、优先级、控制块 */ 
-    xTaskCreate((TaskFunction_t )CORE1_AppTask, "CORE1_Task",512, NULL, 4,&CORE1_TaskHandle);
-#endif
 	
     vTaskStartScheduler();   /* 启动任务，开启调度 */
     while(1);
 }
 
 
-#ifndef CAT1_VERSION
-/***************************************************************************************
-  * @brief  BLE/wifi连接状态引脚中断回调函数
-  * @input   
-  * @return  
-***************************************************************************************/
-void PINT1_CallBack(pint_pin_int_t pintr, uint32_t pmatch_status)
-{
-	//nLink低电平表示WIFI已连接
-	if(GPIO_PinRead(GPIO, BOARD_BT_STATUS_PORT, BOARD_BT_STATUS_PIN) == 0)
-	{
-		g_sys_para.BleWifiLedStatus = BLE_WIFI_CONNECT;
-	}else{
-		g_sys_para.BleWifiLedStatus = BLE_WIFI_READY;
-	}
-}
-
-/***************************************************************************************
-  * @brief  NB-IoT网络状态引脚中断回调函数
-  * @input   
-  * @return  
-***************************************************************************************/
-void PINT2_CallBack(pint_pin_int_t pintr, uint32_t pmatch_status)
-{
-	#ifdef CAT1_VERSION
-	if(GPIO_PinRead(GPIO, BOARD_NB_NETSTATUS_PORT, BOARD_NB_NETSTATUS_PIN))
-	{
-		g_sys_para.BleWifiLedStatus = BLE_WIFI_CONNECT;
-	}else{
-		g_sys_para.BleWifiLedStatus = BLE_WIFI_READY;
-	}
-	#endif
-}
-#endif
 /***************************************************************************************
   * @brief   utick0回调函数
   * @input   
@@ -148,12 +107,6 @@ void UTICK0_Callback(void)
 	if (g_sys_para.tempCount < sizeof(Temperature) && g_sys_para.WorkStatus){
 		Temperature[g_sys_para.tempCount++] = TMP101_ReadTemp();
 	}
-	
-#ifndef CAT1_VERSION
-	if(g_sys_para.sysIdleCount++ >= (g_sys_para.autoPwrOffIdleTime + 1)*60-5) { //定时时间到
-		GPIO_PinWrite(GPIO, BOARD_PWR_OFF_PORT, BOARD_PWR_OFF_PIN, 1);//关机
-	}
-#endif
 }
 
 void CTIMER3_IRQHandler(void)
@@ -182,7 +135,7 @@ void delay_us(uint32_t nus)
 	};
 }
 
-#ifdef CAT1_VERSION
+#if 0
 int fputc(int ch, FILE* stream)
 {
     while (0U == (FLEXCOMM5_PERIPHERAL->STAT & USART_STAT_TXIDLE_MASK)){}

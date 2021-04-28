@@ -153,6 +153,23 @@ void TMP101_WriteReg(uint8_t reg, uint8_t value)
 	__enable_irq();
 }
 
+uint8_t TMP101_ReadReg(uint8_t reg) 
+{
+	uint8_t value;
+	__disable_irq();
+	PT_IIC_Start();
+	PT_IIC_Send_Byte(TMP101_ADDR<<1);
+	PT_IIC_Wait_Ack();
+	PT_IIC_Send_Byte(reg);
+	PT_IIC_Wait_Ack();
+	PT_IIC_Start();
+	PT_IIC_Send_Byte((TMP101_ADDR<<1) | 1);
+	PT_IIC_Wait_Ack();
+	value = PT_IIC_Read_Byte(0);
+	PT_IIC_Stop();
+	__enable_irq();
+	return value;
+}
 
 float TMP101_ReadTemp(void) 
 {
@@ -180,6 +197,7 @@ float TMP101_ReadTemp(void)
 	}
 	return tmp;
 }
+
 
 void TMP101_Init(void) 
 {	
