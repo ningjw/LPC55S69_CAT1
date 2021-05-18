@@ -97,4 +97,6 @@ ADC_SPI_CLK     -> TP5
 g_sys_para.batVoltage = (67793.0 - 3.5028 * mLpadcResult.convValue) / 10000.0;
 
 
+当app设置Fmax为100时, 采样率为256
+
 

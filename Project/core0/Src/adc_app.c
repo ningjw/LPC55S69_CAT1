@@ -4,7 +4,7 @@
 #include "arm_const_structs.h"
 #include "math.h"
 
-float ShakeADC[ADC_LEN];
+uint32_t ShakeADC[ADC_LEN];
 float Temperature[64];
 
 TaskHandle_t ADC_TaskHandle = NULL;  /* ADC任务句柄 */
@@ -269,10 +269,12 @@ void ADC_AppTask(void)
     LPC55S69_AdcInit();
 	
 	TMP101_Init();
-	
-//    xTaskNotify(ADC_TaskHandle, EVT_SAMPLE_START, eSetBits);
+#if 1
+    xTaskNotify(ADC_TaskHandle, EVT_SAMPLE_START, eSetBits);
+#else
     vTaskDelay(5000);
 	SystemSleep();
+#endif
     while(1)
     {
         /*等待ADC完成采样事件*/
@@ -293,18 +295,18 @@ void ADC_AppTask(void)
 		{
             ADC_SampleStop();
 			/* ---------------将震动信号转换-----------------------*/
-#if 0
+#if 1
 			float tempValue = 0;
 			for(uint32_t i = 0; i < g_sample_para.shkCount; i++) {
 				if((uint32_t)ShakeADC[i] < 0x800000){
-					ShakeADC[i] = ShakeADC[i] * g_sample_para.bias * 1.0f / 0x800000;
+					tempValue = ShakeADC[i] * g_sys_flash_para.bias * 1.0f / 0x800000;
 				}else{
-					ShakeADC[i] = ((ShakeADC[i] - 0x800000) * g_sample_para.bias * 1.0f / 0x800000) - g_sample_para.bias;
+					tempValue = ((ShakeADC[i] - 0x800000) * g_sys_flash_para.bias * 1.0f / 0x800000) - g_sys_flash_para.bias;
 				}
-				DEBUG_PRINTF("%01.5f,",ShakeADC[i]);
+				DEBUG_PRINTF("%01.5f,",tempValue);
 			}
 			
-			g_sys_para.shkRMS = GetRMS(ShakeADC, g_sample_para.shkCount, g_sample_para.WindowsType);
+//			g_sys_para.shkRMS = GetRMS(ShakeADC, g_sample_para.shkCount, g_sample_para.WindowsType);
 #endif          
 
 #if defined(BLE_VERSION) || defined(WIFI_VERSION)
